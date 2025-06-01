@@ -8,8 +8,9 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
 # 環境変数からLINEのチャネル情報を読み込む
-LINE_CHANNEL_ACCESS_TOKEN = os.environ["pIjoKmI6SIVmX0PdAR/eZHGskZ5fiOuQb1o0/9r7RnPvKFYfFT20IyQfnSY5M7hJhsOxUiqnU1cmH00OF0KOS8rPAUMkA8YSIzUUboVTnMeGOW2ix2/MXCCxu2N4vxNVrW0aQXiJHt10NwkoqT25iAdB04t89/1O/w1cDnyilFU="]
-LINE_CHANNEL_SECRET = os.environ["fa12c26f5b8e571d56413e554626e470"]
+LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
+LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
+
 
 # Flaskアプリケーション作成
 app = Flask(__name__)
