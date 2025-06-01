@@ -58,3 +58,15 @@ def handle_message(event):
 
 # Flaskアプリ終了処理（Renderでは使わない）
 # if __name__ == "__main__": は不要（gunicorn app:app を使うため）
+
+# ユーザーに返信
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply)
+    )
+
+# ← ここから追加！
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
