@@ -1,56 +1,70 @@
-# 必要なライブラリの読み込み
-from flask import Flask, request
-from linebot import LineBotApi, WebhookHandler
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from flask import Flask, request, abort
+import os
+import re
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import re
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
 
+# 環境変数からLINEのチャネル情報を読み込む
+LINE_CHANNEL_ACCESS_TOKEN = os.environ["pIjoKmI6SIVmX0PdAR/eZHGskZ5fiOuQb1o0/9r7RnPvKFYfFT20IyQfnSY5M7hJhsOxUiqnU1cmH00OF0KOS8rPAUMkA8YSIzUUboVTnMeGOW2ix2/MXCCxu2N4vxNVrW0aQXiJHt10NwkoqT25iAdB04t89/1O/w1cDnyilFU="]
+LINE_CHANNEL_SECRET = os.environ["fa12c26f5b8e571d56413e554626e470"]
+
+# Flaskアプリケーション作成
 app = Flask(__name__)
 
-# --- ① LINE BOTの設定（ここに自分の情報をコピペ） ---
-LINE_CHANNEL_ACCESS_TOKEN = 'pIjoKmI6SIVmX0PdAR/eZHGskZ5fiOuQb1o0/9r7RnPvKFYfFT20IyQfnSY5M7hJhsOxUiqnU1cmH00OF0KOS8rPAUMkA8YSIzUUboVTnMeGOW2ix2/MXCCxu2N4vxNVrW0aQXiJHt10NwkoqT25iAdB04t89/1O/w1cDnyilFU='
-LINE_CHANNEL_SECRET = 'fa12c26f5b8e571d56413e554626e470'
-
+# LINE Bot API と Webhook ハンドラ
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# --- ② Googleスプレッドシートの認証設定 ---
-# スプレッドシートを操作するための認証設定
-scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
-creds = ServiceAccountCredentials.from_json_keyfile_name('credentials.json', scope)
-sheet = gspread.authorize(creds).open("調味料").sheet1  # ← スプレッドシート名に合わせて変更OK
+# Google Sheets APIの設定
+scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+client = gspread.authorize(creds)
 
-# --- ③ LINEからのWebhookを受け取る部分 ---
+# スプレッドシート名（自分のファイル名に合わせて）
+sheet = client.open("調味料").sheet1
+
+# Webhookのエンドポイント
 @app.route("/callback", methods=['POST'])
 def callback():
-    signature = request.headers['X-Line-Signature']  # LINEから送られてくる署名
-    body = request.get_data(as_text=True)  # リクエスト本文
-    handler.handle(body, signature)  # イベント処理に渡す
+    # LINEから送られた署名
+    signature = request.headers['X-Line-Signature']
+
+    # 送られてきた本文
+    body = request.get_data(as_text=True)
+
+    # 署名が正しいか確認
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
     return 'OK'
 
-# --- ④ メッセージを受け取ったときの処理 ---
+# メッセージ受信時の処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    text = event.message.text.strip()  # 受け取ったテキストを取得
+    text = event.message.text
 
-    # 例：「6月1日 おがわ しょうゆ 300円」の形式でマッチさせる
-    match = re.match(r"(\d{1,2}月\d{1,2}日)\s+(\S+)\s+(\S+)\s+(\d+)円?", text)
+    # 入力形式：6月1日 おがわ しょうゆ 300円
+    pattern = r'(\d{1,2})月(\d{1,2})日\s+(\S+)\s+(\S+)\s+(\d+)円'
+    match = re.match(pattern, text)
 
     if match:
-        date, name, item, price = match.groups()
-        # スプレッドシートに行を追加（順番は 日付｜品目｜購入者｜金額）
-        sheet.append_row([date, item, name, int(price)])
+        month, day, name, item, amount = match.groups()
+        date = f"2025/{int(month):02d}/{int(day):02d}"
+        sheet.append_row([date, name, item, int(amount)])
         reply = "記録完了！"
     else:
-        reply = "⚠️ 形式が違います。例：6月1日 おがわ しょうゆ 300円"
+        reply = "形式が正しくありません。例：6月1日 おがわ しょうゆ 300円"
 
-    # LINEに返信
+    # ユーザーに返信
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
     )
 
-# --- ⑤ サーバーをローカルで起動 ---
-if __name__ == "__main__":
-    app.run()
+# 注意：Renderでは app.run() は不要！
+# gunicorn app:app で起動するのでこの行は書かない
