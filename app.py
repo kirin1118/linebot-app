@@ -1,33 +1,32 @@
 from flask import Flask, request, abort
-import os
-import json
+import os, json
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from datetime import datetime
 
-# 🔽 正規表現＆Geminiモジュールをインポート
-from parse_with_regex import parse_with_regex
+# 外部モジュールの読み込み
 from parse_with_gemini import parse_with_gemini
+from helpers import resolve_name, resolve_amount
 
-# LINEの環境変数
+# 環境変数の読み込み
 LINE_CHANNEL_ACCESS_TOKEN = os.environ["LINE_CHANNEL_ACCESS_TOKEN"]
 LINE_CHANNEL_SECRET = os.environ["LINE_CHANNEL_SECRET"]
 
-# Flaskアプリ作成
+# Flaskアプリのセットアップ
 app = Flask(__name__)
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# Googleスプレッドシートの認証と接続
-scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-credentials_json = os.environ["GOOGLE_CREDENTIALS_JSON"]
-credentials_dict = json.loads(credentials_json)
+# Googleスプレッドシートの認証
+scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+credentials_dict = json.loads(os.environ["GOOGLE_CREDENTIALS_JSON"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
-sheet = gspread.authorize(creds).open("調味料").sheet1  # スプレッドシート名に合わせて変更OK
+sheet = gspread.authorize(creds).open("調味料").sheet1  # スプレッドシート名に合わせて変更可
 
-# Webhookエンドポイント
+# LINEのWebhookエンドポイント
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -40,66 +39,40 @@ def callback():
 
     return 'OK'
 
-# メッセージ受信処理
+# LINEでのメッセージ受信時の処理
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     text = event.message.text.strip()
+    print("📩 受信テキスト：", text)
 
-    # 🔽 ログ追加：受け取ったメッセージを表示
-    print("🟡 受け取ったテキスト：", text)
-
-    # 正規表現で解析してみる
-    result = parse_with_regex(text)
-    print("🟢 正規表現の結果：", result)
-
-    if not result:
-        result = parse_with_gemini(text)
-        print("🔵 Geminiの結果：", result)
+    # Geminiで解析
+    result = parse_with_gemini(text)
+    print("🧠 Gemini解析結果：", result)
 
     if result:
+        # 名前・金額の補正処理（helpers.py）
+        result["name"] = resolve_name(result["name"])
+        result["amount"] = resolve_amount(result["amount"])
+
+        # 日付は今日の日付で記録
+        today = datetime.today().strftime("%Y/%m/%d")
         sheet.append_row([
-            result["date"],
+            today,
             result["name"],
             result["item"],
             result["amount"]
         ])
-        reply = "記録完了！"
-    else:
-        reply = "⚠️ 内容を理解できませんでした"
 
+        reply = f"✅ 記録完了！\n{today} に {result['name']} が {result['item']} を {result['amount']}円で購入しました。"
+    else:
+        reply = "⚠️ 内容を理解できませんでした。\n例：6月3日 おがわ バナナ 300円"
+
+    # LINEに返信
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=reply)
     )
 
-    text = event.message.text.strip()
-
-    # まずは正規表現で解析
-    result = parse_with_regex(text)
-
-    # ダメだったらGeminiに渡す
-    if not result:
-        result = parse_with_gemini(text)
-
-    if result:
-        # スプレッドシートに書き込み
-        sheet.append_row([
-            result["date"],
-            result["name"],
-            result["item"],
-            result["amount"]
-        ])
-        reply = "記録完了！（正規表現 or Gemini）"
-    else:
-        reply = "⚠️ 内容を理解できませんでした\n例：6月1日 おがわ しょうゆ 300円"
-
-    # LINEで返信
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=reply)
-    )
-
-# Render向けポート指定
+# Render用（PORT環境変数対応）
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
