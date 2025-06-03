@@ -45,6 +45,35 @@ def callback():
 def handle_message(event):
     text = event.message.text.strip()
 
+    # 🔽 ログ追加：受け取ったメッセージを表示
+    print("🟡 受け取ったテキスト：", text)
+
+    # 正規表現で解析してみる
+    result = parse_with_regex(text)
+    print("🟢 正規表現の結果：", result)
+
+    if not result:
+        result = parse_with_gemini(text)
+        print("🔵 Geminiの結果：", result)
+
+    if result:
+        sheet.append_row([
+            result["date"],
+            result["name"],
+            result["item"],
+            result["amount"]
+        ])
+        reply = "記録完了！"
+    else:
+        reply = "⚠️ 内容を理解できませんでした"
+
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text=reply)
+    )
+
+    text = event.message.text.strip()
+
     # まずは正規表現で解析
     result = parse_with_regex(text)
 
