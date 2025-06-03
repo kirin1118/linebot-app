@@ -1,26 +1,35 @@
 import os
+import json
 import google.generativeai as genai
 
-# 環境変数から Gemini API キーを設定
+# Gemini APIキーの設定（環境変数から取得）
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
 def parse_with_gemini(text):
     """
-    Gemini に自然文を送って、名前・品目・金額を抽出する。
-    JSON形式で返ってくることを期待。
+    Geminiに自然文を渡して、「name」「item」「amount」を抽出してJSONで返す。
+    失敗時は None を返す。
     """
+
     prompt = f"""
-以下の文章から、次の3項目を抽出し、Pythonの辞書形式（JSON）で返してください。
+以下の文章から、次の3つの情報を抽出してください。
 
-- name（名前）→ 必ず「おがわ」「まんぞうじ」「のん」「ゆうや」のいずれかに変換してください。
-- item（品目）→ 買ったものの名前
-- amount（金額）→ 数字で。漢数字でも構いません。
+【抽出対象】
+- name：購入者の名前（必ず「おがわ」「まんぞうじ」「のん」「ゆうや」のいずれかに変換）
+- item：購入した品目（例：しょうゆ、バナナ）
+- amount：金額（数字または漢数字で指定された金額）
 
+【出力フォーマット】
+次の形式で Pythonの辞書（JSON）として **そのまま** 出力してください。
 例：
-「今日 オガワが みかんを 五百円で買いました」→
-{{"name": "おがわ", "item": "みかん", "amount": "五百円"}}
+{{"name": "おがわ", "item": "バナナ", "amount": "五百円"}}
 
-入力文：
+【制約】
+- 出力はJSONの形式のみ。余計なコメントや文章はつけないこと。
+- 金額は「円」を必ず付けること。
+- 入力が短文でも正確に判断すること。
+
+【入力文】
 {text}
 """
 
@@ -31,16 +40,15 @@ def parse_with_gemini(text):
 
         print("🔍 Gemini出力：", result_text)
 
-        # 安全にJSONに変換（evalより安全）
-        import json
         result = json.loads(result_text)
 
-        # 結果に必要なキーが全てあるか確認
+        # name, item, amount がそろっているか確認
         if all(k in result for k in ["name", "item", "amount"]):
             return result
         else:
+            print("⚠️ 必要なキーが足りません")
             return None
 
     except Exception as e:
-        print("❌ Geminiエラー：", e)
+        print("❌ Gemini解析エラー：", e)
         return None
