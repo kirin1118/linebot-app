@@ -1,8 +1,12 @@
 import os
 import google.generativeai as genai
+import json
+import re
 
+# 環境変数からAPIキーを読み込む
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
+# Geminiへのプロンプト
 PROMPT = """
 以下の日本語の文章を読み取り、次の情報を抽出してください：
 - name（誰が）
@@ -21,14 +25,19 @@ PROMPT = """
 出力は以下の形式のJSONで：
 {"name": "〇〇", "item": "〇〇", "amount": "〇〇"}
 
-例：
-入力：まんぞうじさんが味噌を買った 五百円
-出力：{"name": "まんぞうじ", "item": "味噌", "amount": "五百円"}
-
 では、以下の文章を解析してください：
 """
 
 def parse_with_gemini(text):
+    # Gemini 1.5 Flash モデルを使用
     model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+
+    # ユーザーのメッセージをプロンプトに結合して送信
     response = model.generate_content(PROMPT + text)
-    return eval(response.text)  # 安全性に注意（後でjson.loads推奨）
+
+    # レスポンスからJSON部分だけ取り出す
+    match = re.search(r'\{.*?\}', response.text, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+    else:
+        raise ValueError("Geminiの返答からJSONが見つかりませんでした")
