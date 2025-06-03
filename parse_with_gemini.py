@@ -29,6 +29,6 @@ PROMPT = """
 """
 
 def parse_with_gemini(text):
-    model = genai.GenerativeModel("gemini-pro")
+    model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
     response = model.generate_content(PROMPT + text)
     return eval(response.text)  # 安全性に注意（後でjson.loads推奨）
