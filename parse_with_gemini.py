@@ -1,53 +1,46 @@
-import google.generativeai as genai
 import os
-from datetime import datetime
+import google.generativeai as genai
 
-# 環境変数から Gemini APIキーを読み込む
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+# 環境変数から Gemini API キーを設定
+genai.configure(api_key=os.environ["GEMINI_API_KEY"])
 
-# Gemini APIの初期設定
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-pro")
+def parse_with_gemini(text):
+    """
+    Gemini に自然文を送って、名前・品目・金額を抽出する。
+    JSON形式で返ってくることを期待。
+    """
+    prompt = f"""
+以下の文章から、次の3項目を抽出し、Pythonの辞書形式（JSON）で返してください。
 
-# Geminiに渡す命令（プロンプト）
-SYSTEM_PROMPT = """
-あなたは家計簿記録アシスタントです。
-以下の文を読み取り、「日付」「名前」「品目」「金額」を抽出し、次のJSON形式で返してください：
+- name（名前）→ 必ず「おがわ」「まんぞうじ」「のん」「ゆうや」のいずれかに変換してください。
+- item（品目）→ 買ったものの名前
+- amount（金額）→ 数字で。漢数字でも構いません。
 
-{
-  "date": "2025/06/01",
-  "name": "おがわ",
-  "item": "しょうゆ",
-  "amount": 300
-}
+例：
+「今日 オガワが みかんを 五百円で買いました」→
+{{"name": "おがわ", "item": "みかん", "amount": "五百円"}}
+
+入力文：
+{text}
 """
 
-# Geminiを使ってメッセージを解析する関数
-def parse_with_gemini(text):
-    # "今日" という単語があれば、今日の日付に変換する
-    today = datetime.today().strftime("%Y/%m/%d")
-    text = text.replace("今日", today)
-
-    # Geminiに渡す完全なプロンプトを作る
-    prompt = f"{SYSTEM_PROMPT}\n\n文：{text}"
-    print("🟠 Geminiに渡すプロンプト：", prompt)
-
     try:
-        # Geminiに問い合わせて応答を受け取る
+        model = genai.GenerativeModel("models/gemini-pro")
         response = model.generate_content(prompt)
-        response_text = response.text.strip()
-        print("🟢 Geminiの返答：", response_text)
+        result_text = response.text.strip()
 
-        # 応答が文字列なので、Pythonの辞書に変換する
-        parsed = eval(response_text)
+        print("🔍 Gemini出力：", result_text)
 
-        # 必須の項目がすべて揃っているか確認
-        if all(key in parsed for key in ["date", "name", "item", "amount"]):
-            return parsed
+        # 安全にJSONに変換（evalより安全）
+        import json
+        result = json.loads(result_text)
+
+        # 結果に必要なキーが全てあるか確認
+        if all(k in result for k in ["name", "item", "amount"]):
+            return result
         else:
-            print("🔴 Gemini返答に必要な項目が足りません")
             return None
 
     except Exception as e:
-        print("🔴 Geminiでエラー発生:", e)
+        print("❌ Geminiエラー：", e)
         return None
